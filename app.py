@@ -1,6 +1,7 @@
 import streamlit as st
 import fitz
-from rapidfuzz import process
+import re
+from rapidfuzz import process, fuzz
 
 st.set_page_config(
     page_title="Oracle 1Z0-083",
@@ -9,30 +10,45 @@ st.set_page_config(
 
 st.title("📚 Oracle 1Z0-083 Study")
 
-pdf_file = "Exam Dump 1Z0-083.pdf"
+PDF_FILE = "Exam Dump 1Z0-083.pdf"
+
 
 @st.cache_data
-def carregar_pdf():
+def carregar_questoes():
 
-    doc = fitz.open(pdf_file)
+    doc = fitz.open(PDF_FILE)
 
-    paginas = []
+    texto_completo = ""
 
-    for numero, pagina in enumerate(doc):
+    for pagina in doc:
+        texto_completo += pagina.get_text() + "\n"
 
-        texto = pagina.get_text()
+    padrao = r"Question\s+(\d+)(.*?)(?=Question\s+\d+|$)"
 
-        paginas.append({
-            "pagina": numero + 1,
-            "texto": texto
-        })
+    encontrados = re.findall(
+        padrao,
+        texto_completo,
+        flags=re.S | re.I
+    )
 
-    return paginas
+    questoes = []
 
-dados = carregar_pdf()
+    for numero, conteudo in encontrados:
+
+        questoes.append(
+            {
+                "numero": numero,
+                "conteudo": conteudo.strip()
+            }
+        )
+
+    return questoes
+
+
+questoes = carregar_questoes()
 
 st.success(
-    f"PDF carregado com {len(dados)} páginas."
+    f"{len(questoes)} questões carregadas."
 )
 
 texto_busca = st.text_input(
@@ -41,28 +57,31 @@ texto_busca = st.text_input(
 
 if texto_busca:
 
-    textos = [
-        p["texto"]
-        for p in dados
+    lista_textos = [
+        q["conteudo"]
+        for q in questoes
     ]
 
-    resultado = process.extractOne(
+    melhor = process.extractOne(
         texto_busca,
-        textos
+        lista_textos,
+        scorer=fuzz.token_set_ratio
     )
 
-    texto_encontrado, score, indice = resultado
+    texto, score, indice = melhor
+
+    questao = questoes[indice]
 
     st.write(
         f"Similaridade: {score:.2f}%"
     )
 
     st.subheader(
-        f"Página {dados[indice]['pagina']}"
+        f"Questão {questao['numero']}"
     )
 
     st.text_area(
-        "Conteúdo encontrado",
-        texto_encontrado,
-        height=400
+        "Questão encontrada",
+        questao["conteudo"],
+        height=500
     )
