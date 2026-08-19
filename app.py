@@ -1,4 +1,5 @@
 import streamlit as st
+import fitz
 
 st.set_page_config(
     page_title="Oracle 1Z0-083",
@@ -7,15 +8,24 @@ st.set_page_config(
 
 st.title("📚 Oracle 1Z0-083 Study")
 
-st.write(
-    "Aplicação de busca de questões Oracle 1Z0-083."
-)
+pdf_file = "Exam Dump 1Z0-083.pdf"
 
-pergunta = st.text_input(
-    "Digite uma pergunta para teste:"
-)
+try:
 
-if pergunta:
+    documento = fitz.open(pdf_file)
+
+    quantidade_paginas = len(documento)
+
     st.success(
-        f"Você digitou: {pergunta}"
+        f"PDF carregado com sucesso!"
+    )
+
+    st.write(
+        f"Total de páginas: {quantidade_paginas}"
+    )
+
+except Exception as erro:
+
+    st.error(
+        f"Erro ao abrir PDF: {erro}"
     )
