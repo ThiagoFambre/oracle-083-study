@@ -8,6 +8,10 @@ from PIL import Image
 from rapidfuzz import process, fuzz
 
 
+# -------------------------------
+# Configuração da página
+# -------------------------------
+
 st.set_page_config(
     page_title="Oracle 1Z0-083 Study",
     page_icon="📚",
@@ -20,43 +24,89 @@ st.title("📚 Oracle 1Z0-083 Study")
 PDF_FILE = "Exam Dump 1Z0-083.pdf"
 
 
-@st.cache_data
-def carregar_questoes():
+# -------------------------------
+# Funções auxiliares
+# -------------------------------
 
-    doc = fitz.open(PDF_FILE)
+def normalizar_texto(texto):
+    texto = texto.lower()
+    texto = re.sub(r"\s+", " ", texto)
+    texto = texto.replace("_", " ")
+    texto = texto.strip()
+    return texto
 
-    texto_completo = ""
+
+def cor_eh_verde(cor):
+    if not cor:
+        return False
+
+    try:
+        r, g, b = cor[0], cor[1], cor[2]
+
+        if g > 0.45 and r < 0.45 and b < 0.45:
+            return True
+
+    except Exception:
+        return False
+
+    return False
+
+
+def extrair_textos_destacados_verde(doc):
+    textos_verdes = []
 
     for pagina in doc:
-        texto_completo += pagina.get_text() + "\n"
 
-    padrao = r"Question\s+(\d+)(.*?)(?=Question\s+\d+|$)"
+        retangulos_verdes = []
 
-    resultados = re.findall(
-        padrao,
-        texto_completo,
-        flags=re.S | re.I
-    )
+        desenhos = pagina.get_drawings()
 
-    questoes = []
+        for desenho in desenhos:
 
-    for numero, conteudo in resultados:
+            cor_preenchimento = desenho.get("fill")
 
-        questoes.append({
-            "numero": numero,
-            "conteudo": conteudo.strip()
-        })
+            if cor_eh_verde(cor_preenchimento):
 
-    return questoes
+                try:
+                    retangulos_verdes.append(
+                        fitz.Rect(desenho["rect"])
+                    )
+                except Exception:
+                    pass
 
+        if not retangulos_verdes:
+            continue
 
-@st.cache_resource
-def carregar_ocr():
+        dados = pagina.get_text("dict")
 
-    return easyocr.Reader(
-        ["en", "pt"],
-        gpu=False
-    )
+        for bloco in dados.get("blocks", []):
+
+            for linha in bloco.get("lines", []):
+
+                texto_linha = ""
+
+                for span in linha.get("spans", []):
+                    texto_linha += span.get("text", "")
+
+                texto_linha = texto_linha.strip()
+
+                if not texto_linha:
+                    continue
+
+                try:
+                    bbox_linha = fitz.Rect(linha["bbox"])
+                except Exception:
+                    continue
+
+                for ret_verde in retangulos_verdes:
+
+                    if bbox_linha.intersects(ret_verde):
+
+                        textos_verdes.append(texto_linha)
+                        break
+
+    return textos_verdes
+
 
 def separar_pergunta_alternativas(conteudo):
 
@@ -80,11 +130,107 @@ def separar_pergunta_alternativas(conteudo):
     return pergunta, alternativas
 
 
+def identificar_respostas_corretas(alternativas, textos_verdes):
+
+    respostas = []
+
+    for alternativa in alternativas:
+
+        match_alt = re.match(r"^([A-F])\.\s*(.*)", alternativa)
+
+        if not match_alt:
+            continue
+
+        letra = match_alt.group(1)
+        texto_alt = match_alt.group(2)
+
+        texto_alt_norm = normalizar_texto(texto_alt)
+
+        for texto_verde in textos_verdes:
+
+            texto_verde_norm = normalizar_texto(texto_verde)
+
+            if not texto_verde_norm:
+                continue
+
+            score_1 = fuzz.partial_ratio(
+                texto_verde_norm,
+                texto_alt_norm
+            )
+
+            score_2 = fuzz.token_set_ratio(
+                texto_verde_norm,
+                texto_alt_norm
+            )
+
+            melhor_score = max(score_1, score_2)
+
+            if melhor_score >= 75:
+
+                if letra not in respostas:
+                    respostas.append(letra)
+
+    return respostas
+
+
+@st.cache_data
+def carregar_questoes():
+
+    doc = fitz.open(PDF_FILE)
+
+    texto_completo = ""
+
+    for pagina in doc:
+        texto_completo += pagina.get_text() + "\n"
+
+    textos_verdes = extrair_textos_destacados_verde(doc)
+
+    padrao = r"Question\s+(\d+)(.*?)(?=Question\s+\d+|$)"
+
+    resultados = re.findall(
+        padrao,
+        texto_completo,
+        flags=re.S | re.I
+    )
+
+    questoes = []
+
+    for numero, conteudo in resultados:
+
+        conteudo = conteudo.strip()
+
+        pergunta, alternativas = separar_pergunta_alternativas(conteudo)
+
+        respostas = identificar_respostas_corretas(
+            alternativas,
+            textos_verdes
+        )
+
+        questoes.append({
+            "numero": numero,
+            "conteudo": conteudo,
+            "respostas": respostas
+        })
+
+    return questoes
+
+
+@st.cache_resource
+def carregar_ocr():
+
+    return easyocr.Reader(
+        ["en", "pt"],
+        gpu=False
+    )
+
+
 def mostrar_questao(questao, score):
 
     pergunta, alternativas = separar_pergunta_alternativas(
         questao["conteudo"]
     )
+
+    respostas = questao.get("respostas", [])
 
     st.metric(
         "Similaridade",
@@ -95,6 +241,22 @@ def mostrar_questao(questao, score):
         f"Questão {questao['numero']}"
     )
 
+    if respostas:
+
+        st.markdown("### ✅ Resposta correta")
+
+        respostas_formatadas = ", ".join(respostas)
+
+        st.success(
+            f"Alternativa(s): {respostas_formatadas}"
+        )
+
+    else:
+
+        st.warning(
+            "Não consegui identificar automaticamente a resposta correta pelo destaque verde desta questão."
+        )
+
     st.markdown("### Pergunta")
 
     st.write(
@@ -104,7 +266,13 @@ def mostrar_questao(questao, score):
     st.markdown("### Alternativas")
 
     for alt in alternativas:
-        st.write(alt)
+
+        match_alt = re.match(r"^([A-F])\.", alt)
+
+        if match_alt and match_alt.group(1) in respostas:
+            st.success(f"✅ {alt}")
+        else:
+            st.write(alt)
 
 
 def buscar_questao_por_texto(texto_busca, questoes):
@@ -136,6 +304,23 @@ def buscar_questao_por_numero(numero, questoes):
     return None
 
 
+# -------------------------------
+# Estado da câmera
+# -------------------------------
+
+if "camera_key" not in st.session_state:
+    st.session_state.camera_key = 0
+
+
+def voltar_inicio():
+    st.session_state.camera_key += 1
+    st.rerun()
+
+
+# -------------------------------
+# Carregamento das questões
+# -------------------------------
+
 questoes = carregar_questoes()
 
 st.success(
@@ -146,6 +331,9 @@ st.caption(
     "Você pode pesquisar por texto, número da questão ou usar a câmera do celular."
 )
 
+if st.button("🔄 Voltar ao início / tirar outra foto"):
+    voltar_inicio()
+
 
 # -------------------------------
 # Navegação lateral
@@ -155,30 +343,30 @@ with st.sidebar:
 
     st.title("Navegação")
 
-numeros_questoes = [
-    q["numero"]
-    for q in questoes
-]
+    numeros_questoes = [
+        q["numero"]
+        for q in questoes
+    ]
 
-questao_sidebar = st.sidebar.selectbox(
-    "Ir para questão",
-    numeros_questoes
-)
-
-if st.sidebar.button("Abrir Questão"):
-
-    questao = buscar_questao_por_numero(
-        questao_sidebar,
-        questoes
+    questao_sidebar = st.selectbox(
+        "Ir para questão",
+        numeros_questoes
     )
 
-    if questao:
-        mostrar_questao(
-            questao,
-            100
+    if st.button("Abrir Questão"):
+
+        questao = buscar_questao_por_numero(
+            questao_sidebar,
+            questoes
         )
 
-    st.stop()
+        if questao:
+            mostrar_questao(
+                questao,
+                100
+            )
+
+        st.stop()
 
 
 # -------------------------------
@@ -251,10 +439,12 @@ Dicas:
 - Enquadre apenas a questão.
 - Evite pegar barras do navegador.
 - Procure preencher toda a tela.
+- Se a leitura ficar ruim, aproxime mais a câmera.
 """)
 
 foto = st.camera_input(
-    "Fotografe a questão"
+    "Fotografe a questão",
+    key=f"camera_{st.session_state.camera_key}"
 )
 
 if foto:
@@ -318,8 +508,16 @@ if foto:
             score
         )
 
+        st.divider()
+
+        if st.button("📷 Tirar outra foto"):
+            voltar_inicio()
+
     else:
 
         st.warning(
             "Não foi possível identificar texto na imagem. Tire outra foto com melhor iluminação."
         )
+
+        if st.button("📷 Tentar novamente"):
+            voltar_inicio()
