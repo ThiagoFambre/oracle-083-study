@@ -43,7 +43,8 @@ def cor_eh_verde(cor):
     try:
         r, g, b = cor[0], cor[1], cor[2]
 
-        if g > 0.45 and r < 0.45 and b < 0.45:
+        # Verde típico do marcador do PDF
+        if g > 0.45 and r < 0.55 and b < 0.55:
             return True
 
     except Exception:
@@ -52,14 +53,26 @@ def cor_eh_verde(cor):
     return False
 
 
-def extrair_textos_destacados_verde(doc):
-    textos_verdes = []
+def extrair_textos_verdes_por_pagina(doc):
+    """
+    Extrai textos que intersectam marcações verdes do PDF.
+    Retorna um dicionário:
+    {
+        1: ["A. texto verde", "C. texto verde"],
+        2: [...]
+    }
+    """
 
-    for pagina in doc:
+    verdes_por_pagina = {}
+
+    for numero_pagina, pagina in enumerate(doc, start=1):
 
         retangulos_verdes = []
 
-        desenhos = pagina.get_drawings()
+        try:
+            desenhos = pagina.get_drawings()
+        except Exception:
+            desenhos = []
 
         for desenho in desenhos:
 
@@ -74,38 +87,41 @@ def extrair_textos_destacados_verde(doc):
                 except Exception:
                     pass
 
-        if not retangulos_verdes:
-            continue
+        textos_verdes = []
 
-        dados = pagina.get_text("dict")
+        if retangulos_verdes:
 
-        for bloco in dados.get("blocks", []):
+            dados = pagina.get_text("dict")
 
-            for linha in bloco.get("lines", []):
+            for bloco in dados.get("blocks", []):
 
-                texto_linha = ""
+                for linha in bloco.get("lines", []):
 
-                for span in linha.get("spans", []):
-                    texto_linha += span.get("text", "")
+                    texto_linha = ""
 
-                texto_linha = texto_linha.strip()
+                    for span in linha.get("spans", []):
+                        texto_linha += span.get("text", "")
 
-                if not texto_linha:
-                    continue
+                    texto_linha = texto_linha.strip()
 
-                try:
-                    bbox_linha = fitz.Rect(linha["bbox"])
-                except Exception:
-                    continue
+                    if not texto_linha:
+                        continue
 
-                for ret_verde in retangulos_verdes:
+                    try:
+                        bbox_linha = fitz.Rect(linha["bbox"])
+                    except Exception:
+                        continue
 
-                    if bbox_linha.intersects(ret_verde):
+                    for ret_verde in retangulos_verdes:
 
-                        textos_verdes.append(texto_linha)
-                        break
+                        if bbox_linha.intersects(ret_verde):
 
-    return textos_verdes
+                            textos_verdes.append(texto_linha)
+                            break
+
+        verdes_por_pagina[numero_pagina] = textos_verdes
+
+    return verdes_por_pagina
 
 
 def separar_pergunta_alternativas(conteudo):
@@ -130,7 +146,7 @@ def separar_pergunta_alternativas(conteudo):
     return pergunta, alternativas
 
 
-def identificar_respostas_corretas(alternativas, textos_verdes):
+def identificar_respostas_corretas(alternativas, textos_verdes_da_questao):
 
     respostas = []
 
@@ -146,7 +162,7 @@ def identificar_respostas_corretas(alternativas, textos_verdes):
 
         texto_alt_norm = normalizar_texto(texto_alt)
 
-        for texto_verde in textos_verdes:
+        for texto_verde in textos_verdes_da_questao:
 
             texto_verde_norm = normalizar_texto(texto_verde)
 
@@ -165,7 +181,7 @@ def identificar_respostas_corretas(alternativas, textos_verdes):
 
             melhor_score = max(score_1, score_2)
 
-            if melhor_score >= 75:
+            if melhor_score >= 85:
 
                 if letra not in respostas:
                     respostas.append(letra)
@@ -173,42 +189,96 @@ def identificar_respostas_corretas(alternativas, textos_verdes):
     return respostas
 
 
+def descobrir_paginas_da_questao(match_inicio, match_fim, paginas_posicoes):
+    """
+    Descobre em quais páginas a questão aparece dentro do texto completo.
+    Isso evita misturar respostas verdes de outras páginas.
+    """
+
+    paginas = []
+
+    for pagina_info in paginas_posicoes:
+
+        pagina_numero = pagina_info["pagina"]
+        inicio = pagina_info["inicio"]
+        fim = pagina_info["fim"]
+
+        if match_inicio <= fim and match_fim >= inicio:
+            paginas.append(pagina_numero)
+
+    return paginas
+
+
 @st.cache_data
 def carregar_questoes():
 
     doc = fitz.open(PDF_FILE)
 
+    verdes_por_pagina = extrair_textos_verdes_por_pagina(doc)
+
     texto_completo = ""
+    paginas_posicoes = []
 
-    for pagina in doc:
-        texto_completo += pagina.get_text() + "\n"
+    posicao_atual = 0
 
-    textos_verdes = extrair_textos_destacados_verde(doc)
+    for numero_pagina, pagina in enumerate(doc, start=1):
+
+        texto_pagina = pagina.get_text() + "\n"
+
+        inicio = posicao_atual
+        fim = inicio + len(texto_pagina)
+
+        paginas_posicoes.append({
+            "pagina": numero_pagina,
+            "inicio": inicio,
+            "fim": fim
+        })
+
+        texto_completo += texto_pagina
+        posicao_atual = fim
 
     padrao = r"Question\s+(\d+)(.*?)(?=Question\s+\d+|$)"
 
-    resultados = re.findall(
-        padrao,
-        texto_completo,
-        flags=re.S | re.I
+    resultados = list(
+        re.finditer(
+            padrao,
+            texto_completo,
+            flags=re.S | re.I
+        )
     )
 
     questoes = []
 
-    for numero, conteudo in resultados:
+    for resultado in resultados:
 
-        conteudo = conteudo.strip()
+        numero = resultado.group(1)
+        conteudo = resultado.group(2).strip()
+
+        paginas_da_questao = descobrir_paginas_da_questao(
+            resultado.start(),
+            resultado.end(),
+            paginas_posicoes
+        )
+
+        textos_verdes_da_questao = []
+
+        for pagina_numero in paginas_da_questao:
+            textos_verdes_da_questao.extend(
+                verdes_por_pagina.get(pagina_numero, [])
+            )
 
         pergunta, alternativas = separar_pergunta_alternativas(conteudo)
 
         respostas = identificar_respostas_corretas(
             alternativas,
-            textos_verdes
+            textos_verdes_da_questao
         )
 
         questoes.append({
             "numero": numero,
             "conteudo": conteudo,
+            "paginas": paginas_da_questao,
+            "textos_verdes": textos_verdes_da_questao,
             "respostas": respostas
         })
 
@@ -240,6 +310,13 @@ def mostrar_questao(questao, score):
     st.subheader(
         f"Questão {questao['numero']}"
     )
+
+    paginas = questao.get("paginas", [])
+
+    if paginas:
+        st.caption(
+            "Página(s) no PDF: " + ", ".join(str(p) for p in paginas)
+        )
 
     if respostas:
 
