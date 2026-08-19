@@ -53,11 +53,10 @@ def carregar_questoes():
 @st.cache_resource
 def carregar_ocr():
 
-reader = easyocr.Reader(
-    ["en", "pt"],
-    gpu=False
-)
-
+    return easyocr.Reader(
+        ["en", "pt"],
+        gpu=False
+    )
 
 def separar_pergunta_alternativas(conteudo):
 
@@ -118,7 +117,7 @@ def buscar_questao_por_texto(texto_busca, questoes):
     resultado = process.extractOne(
         texto_busca,
         textos,
-        scorer=fuzz.token_set_ratio
+        scorer=fuzz.partial_ratio
     )
 
     texto, score, indice = resultado
@@ -152,7 +151,9 @@ st.caption(
 # Navegação lateral
 # -------------------------------
 
-st.sidebar.title("Navegação")
+with st.sidebar:
+
+    st.title("Navegação")
 
 numeros_questoes = [
     q["numero"]
@@ -262,14 +263,14 @@ if foto:
 
     largura, altura = imagem.size
 
-imagem = imagem.crop(
-    (
-        int(largura * 0.02),
-        int(altura * 0.15),
-        int(largura * 0.98),
-        int(altura * 0.85)
+    imagem = imagem.crop(
+        (
+            int(largura * 0.02),
+            int(altura * 0.15),
+            int(largura * 0.98),
+            int(altura * 0.85)
+        )
     )
-)
 
     st.image(
         imagem,
@@ -281,12 +282,11 @@ imagem = imagem.crop(
 
     with st.spinner("Lendo texto da imagem..."):
 
-       
         resultado_ocr = reader.readtext(
-    np.array(imagem),
-    detail=0,
-    paragraph=False
-)
+            np.array(imagem),
+            detail=0,
+            paragraph=False
+        )
 
     texto_extraido = " ".join(resultado_ocr).strip()
 
