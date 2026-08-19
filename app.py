@@ -46,6 +46,18 @@ def carregar_questoes():
 
 questoes = carregar_questoes()
 
+st.sidebar.title("Navegação")
+
+numeros_questoes = [
+    q["numero"]
+    for q in questoes
+]
+
+questao_sidebar = st.sidebar.selectbox(
+    "Ir para questão",
+    numeros_questoes
+)
+
 st.success(
     f"{len(questoes)} questões carregadas."
 )
@@ -58,6 +70,45 @@ modo_busca = st.radio(
 valor_busca = st.text_input(
     "Digite sua busca:"
 )
+
+if st.sidebar.button("Abrir Questão"):
+
+    for q in questoes:
+
+        if q["numero"] == questao_sidebar:
+
+            st.metric(
+                "Similaridade",
+                "100%"
+            )
+
+            st.subheader(
+                f"Questão {q['numero']}"
+            )
+
+            linhas = q["conteudo"].split("\n")
+
+            pergunta = []
+            alternativas = []
+
+            for linha in linhas:
+
+                linha = linha.strip()
+
+                if re.match(r"^[A-F]\.", linha):
+                    alternativas.append(linha)
+                else:
+                    pergunta.append(linha)
+
+            st.markdown("### Pergunta")
+            st.write("\n".join(pergunta))
+
+            st.markdown("### Alternativas")
+
+            for alt in alternativas:
+                st.write(alt)
+
+            st.stop()
 
 if valor_busca:
 
