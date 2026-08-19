@@ -11,7 +11,8 @@ from rapidfuzz import process, fuzz
 st.set_page_config(
     page_title="Oracle 1Z0-083 Study",
     page_icon="📚",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
 st.title("📚 Oracle 1Z0-083 Study")
@@ -52,10 +53,10 @@ def carregar_questoes():
 @st.cache_resource
 def carregar_ocr():
 
-    return easyocr.Reader(
-        ["en"],
-        gpu=False
-    )
+reader = easyocr.Reader(
+    ["en", "pt"],
+    gpu=False
+)
 
 
 def separar_pergunta_alternativas(conteudo):
@@ -241,6 +242,16 @@ st.info(
     "Aponte a câmera para a questão e tire uma foto. O sistema fará OCR da imagem e tentará localizar a questão correspondente no PDF."
 )
 
+st.markdown("""
+### 📷 Captura da questão
+
+Dicas:
+- Tire a foto na horizontal.
+- Enquadre apenas a questão.
+- Evite pegar barras do navegador.
+- Procure preencher toda a tela.
+""")
+
 foto = st.camera_input(
     "Fotografe a questão"
 )
@@ -248,6 +259,17 @@ foto = st.camera_input(
 if foto:
 
     imagem = Image.open(foto).convert("RGB")
+
+    largura, altura = imagem.size
+
+imagem = imagem.crop(
+    (
+        int(largura * 0.02),
+        int(altura * 0.15),
+        int(largura * 0.98),
+        int(altura * 0.85)
+    )
+)
 
     st.image(
         imagem,
@@ -259,11 +281,12 @@ if foto:
 
     with st.spinner("Lendo texto da imagem..."):
 
+       
         resultado_ocr = reader.readtext(
-            np.array(imagem),
-            detail=0,
-            paragraph=True
-        )
+    np.array(imagem),
+    detail=0,
+    paragraph=False
+)
 
     texto_extraido = " ".join(resultado_ocr).strip()
 
