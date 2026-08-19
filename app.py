@@ -61,39 +61,42 @@ valor_busca = st.text_input(
 
 if valor_busca:
 
-if modo_busca == "Número da Questão":
+    if modo_busca == "Número da Questão":
 
-    questao = None
+        questao = None
 
-    for q in questoes:
+        for q in questoes:
 
-        if q["numero"] == valor_busca.strip():
+            if q["numero"] == valor_busca.strip():
 
-            questao = q
-            score = 100
-            break
+                questao = q
+                score = 100
+                break
 
-    if questao is None:
+        if questao is None:
 
-        st.error(
-            "Questão não encontrada."
+            st.error(
+                "Questão não encontrada."
+            )
+
+            st.stop()
+
+    else:
+
+        textos = [
+            q["conteudo"]
+            for q in questoes
+        ]
+
+        resultado = process.extractOne(
+            valor_busca,
+            textos,
+            scorer=fuzz.token_set_ratio
         )
 
-        st.stop()
+        texto, score, indice = resultado
 
-else:
-
-    textos = [q["conteudo"] for q in questoes]
-
-    resultado = process.extractOne(
-        valor_busca,
-        textos,
-        scorer=fuzz.token_set_ratio
-    )
-
-    texto, score, indice = resultado
-
-    questao = questoes[indice]
+        questao = questoes[indice]
 
     linhas = questao["conteudo"].split("\n")
 
