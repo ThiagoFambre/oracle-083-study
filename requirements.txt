@@ -2,3 +2,7 @@ streamlit
 pymupdf
 rapidfuzz
 pandas
+easyocr
+Pillow
+numpy
+opencv-python-headless
