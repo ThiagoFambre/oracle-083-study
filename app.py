@@ -50,16 +50,43 @@ st.success(
     f"{len(questoes)} questões carregadas."
 )
 
-texto_busca = st.text_input(
-    "Digite parte da pergunta:"
+modo_busca = st.radio(
+    "Tipo de busca",
+    ["Texto", "Número da Questão"]
 )
 
-if texto_busca:
+valor_busca = st.text_input(
+    "Digite sua busca:"
+)
+
+if valor_busca:
+
+if modo_busca == "Número da Questão":
+
+    questao = None
+
+    for q in questoes:
+
+        if q["numero"] == valor_busca.strip():
+
+            questao = q
+            score = 100
+            break
+
+    if questao is None:
+
+        st.error(
+            "Questão não encontrada."
+        )
+
+        st.stop()
+
+else:
 
     textos = [q["conteudo"] for q in questoes]
 
     resultado = process.extractOne(
-        texto_busca,
+        valor_busca,
         textos,
         scorer=fuzz.token_set_ratio
     )
