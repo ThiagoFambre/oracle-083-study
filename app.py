@@ -4,11 +4,12 @@ import re
 from rapidfuzz import process, fuzz
 
 st.set_page_config(
-    page_title="Oracle 1Z0-083",
+    page_title="Oracle 1Z0-083 Study",
     page_icon="📚"
 )
 
 st.title("📚 Oracle 1Z0-083 Study")
+
 
 PDF_FILE = "Exam Dump 1Z0-083.pdf"
 
@@ -25,7 +26,7 @@ def carregar_questoes():
 
     padrao = r"Question\s+(\d+)(.*?)(?=Question\s+\d+|$)"
 
-    encontrados = re.findall(
+    resultados = re.findall(
         padrao,
         texto_completo,
         flags=re.S | re.I
@@ -33,14 +34,12 @@ def carregar_questoes():
 
     questoes = []
 
-    for numero, conteudo in encontrados:
+    for numero, conteudo in resultados:
 
-        questoes.append(
-            {
-                "numero": numero,
-                "conteudo": conteudo.strip()
-            }
-        )
+        questoes.append({
+            "numero": numero,
+            "conteudo": conteudo.strip()
+        })
 
     return questoes
 
@@ -57,31 +56,48 @@ texto_busca = st.text_input(
 
 if texto_busca:
 
-    lista_textos = [
-        q["conteudo"]
-        for q in questoes
-    ]
+    textos = [q["conteudo"] for q in questoes]
 
-    melhor = process.extractOne(
+    resultado = process.extractOne(
         texto_busca,
-        lista_textos,
+        textos,
         scorer=fuzz.token_set_ratio
     )
 
-    texto, score, indice = melhor
+    texto, score, indice = resultado
 
     questao = questoes[indice]
 
-    st.write(
-        f"Similaridade: {score:.2f}%"
+    linhas = questao["conteudo"].split("\n")
+
+    pergunta = []
+    alternativas = []
+
+    for linha in linhas:
+
+        linha = linha.strip()
+
+        if re.match(r"^[A-F]\.", linha):
+            alternativas.append(linha)
+        else:
+            pergunta.append(linha)
+
+    st.metric(
+        "Similaridade",
+        f"{score:.2f}%"
     )
 
     st.subheader(
         f"Questão {questao['numero']}"
     )
 
-    st.text_area(
-        "Questão encontrada",
-        questao["conteudo"],
-        height=500
+    st.markdown("### Pergunta")
+
+    st.write(
+        "\n".join(pergunta)
     )
+
+    st.markdown("### Alternativas")
+
+    for alt in alternativas:
+        st.write(alt)
